@@ -1,9 +1,9 @@
 # configatelli
 ## how to use
-### add command
+### store command
 store the location and name of config_files
 ```
-configatelli add [config_files]
+configatelli store [config_files]
 ```
 ### deploy command
 copy config files to their appropriate locations
