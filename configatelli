@@ -31,7 +31,7 @@ else:
 OUTPUT_FILE = 'locations.xml'
 PASSWORD_FILE = '.passwd.txt'
 
-def add(args):
+def store(args):
    with cd(PATH):
         for f in args.file:
             file_path = Path(f).parent.resolve().as_posix()
@@ -75,11 +75,11 @@ def deploy(args):
 mainparser = ap.ArgumentParser(prog="configatelli", description="manage your config files")
 subparser = mainparser.add_subparsers(help="subcommand help")
 
-add_parser = subparser.add_parser('add', help="adding a config")
-add_parser.add_argument("file", nargs='+', help="the files to store")
-add_parser.add_argument("-e", "--encrypt", help="encrypt the file", action="store_true")
-add_parser.add_argument("-y", "--yes", help="automatically update the file if it exists", action="store_true")
-add_parser.set_defaults(func=add)
+store_parser = subparser.add_parser('store', help="storeing a config")
+store_parser.add_argument("file", nargs='+', help="the files to store")
+store_parser.add_argument("-e", "--encrypt", help="encrypt the file", action="store_true")
+store_parser.add_argument("-y", "--yes", help="automatically update the file if it exists", action="store_true")
+store_parser.set_defaults(func=store)
 
 deploy_parser = subparser.add_parser('deploy', help="deploy config files")
 deploy_parser.add_argument("-v", "--verbose", action="store_true")
