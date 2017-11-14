@@ -6,6 +6,7 @@ import xml.etree.ElementTree as etree
 import os
 from subprocess import call
 import argparse as ap
+from hashlib import md5
 
 @contextmanager
 def cd(path):
@@ -16,26 +17,32 @@ def cd(path):
     finally:
         os.chdir(old)
 
-name_file_location = '.configatelli'
 alreadyExist = lambda root,location,name : root.find('.//entry/[name="{}"][location="{}"]'.format(name,location)) != None
-
-CONF_LOC = Path.home().joinpath(name_file_location)
-if CONF_LOC.exists():
-    PATH = CONF_LOC.read_text() 
-else:
-    print("{} doesn't exist".format(name_file_location))
-    print("creating it")
-    PATH = Path.cwd().as_posix()
-    CONF_LOC.write_text(PATH)
 
 OUTPUT_FILE = 'locations.xml'
 PASSWORD_FILE = '.passwd.txt'
+## CHECK/CREATE CONFIG
+CONF_DIR = Path.home().joinpath('.config/configatelli')
+if not CONF_DIR.exists():
+    os.mkdir(CONF_DIR.as_posix())
+    with cd(CONF_DIR.as_posix()):
+        root = etree.Element('config')
+        with open(OUTPUT_FILE,'xb') as f:
+            f.write(etree.tostring(root))
 
+
+## CHECK/CREATE CONFIG
+DATA_DIR = Path.home().joinpath('.local/share/configatelli')
+if not DATA_DIR.exists():
+    os.mkdir(DATA_DIR.as_posix())
+        
 def store(args):
-   with cd(PATH):
-        for f in args.file:
-            file_path = Path(f).parent.resolve().as_posix()
-            file_name = Path(f).name
+   args_files = [ Path(f).absolute().resolve().as_posix() for f in args.files ]
+   with cd(CONF_DIR.as_posix()):
+        for args_file in args_files:
+            file_path = Path(args_file).parent.as_posix()
+            file_name = Path(args_file).name
+            hash_file = md5(args_file.encode('utf-8')).hexdigest()
 
             #test if the password exists
             passwd_file = Path.cwd().joinpath(PASSWORD_FILE)
@@ -43,7 +50,7 @@ def store(args):
                 passwd=passwd_file.read_text()
             #creation of passwd to encrypt
             else:
-                print('ko')
+                pass
             
             #creation of OUTPUT_FILE
             if not Path(OUTPUT_FILE).exists():
@@ -55,8 +62,9 @@ def store(args):
 
             if alreadyExist(root,file_path,file_name):
                 if args.yes or input('The file exists already, do you want to update it? [y/n]: ') == 'y':
-                    call(['cp', Path(f).resolve().as_posix(), '.'])
-                    print('{} updated'.format(file_name))
+                    with cd(DATA_DIR.as_posix()):
+                        call(['cp', args_file, hash_file])
+                        print('{} updated'.format(file_name))
 
             else:
                 entryelem = etree.SubElement(root,'entry')
@@ -67,16 +75,19 @@ def store(args):
                 encrypelem = etree.SubElement(entryelem,'encrypted')
                 encrypelem.text = str(args.encrypt)
                 tree.write(OUTPUT_FILE)
-                print('copying file {}'.format(file_name))
-                call(['cp', Path(f).resolve().as_posix(), '.'])
+                with cd(DATA_DIR.as_posix()):
+                    call(['cp', args_file, hash_file])
+                    print('{} stored'.format(file_name))
 def deploy(args):
     print("deploying")
 
 mainparser = ap.ArgumentParser(prog="configatelli", description="manage your config files")
 subparser = mainparser.add_subparsers(help="subcommand help")
+subparser.required = True
+subparser.dest = 'command'
 
-store_parser = subparser.add_parser('store', help="storeing a config")
-store_parser.add_argument("file", nargs='+', help="the files to store")
+store_parser = subparser.add_parser('store', help="store config files")
+store_parser.add_argument("files", nargs='+', help="the files to store")
 store_parser.add_argument("-e", "--encrypt", help="encrypt the file", action="store_true")
 store_parser.add_argument("-y", "--yes", help="automatically update the file if it exists", action="store_true")
 store_parser.set_defaults(func=store)
@@ -86,5 +97,5 @@ deploy_parser.add_argument("-v", "--verbose", action="store_true")
 deploy_parser.set_defaults(func=deploy)
 
 args = mainparser.parse_args()
+#we resolve the full path
 args.func(args)
-
