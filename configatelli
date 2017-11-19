@@ -7,6 +7,7 @@ import os
 from subprocess import call
 import argparse as ap
 from hashlib import md5
+from shutil import copy,Error
 
 @contextmanager
 def cd(path):
@@ -36,50 +37,75 @@ DATA_DIR = Path.home().joinpath('.local/share/configatelli')
 if not DATA_DIR.exists():
     os.mkdir(DATA_DIR.as_posix())
         
+def getTree(f):
+    if not Path(f).exists():
+        root = etree.Element('config')
+        with open(f,'xb') as f:
+            f.write(etree.tostring(root))
+    return etree.parse(f)
+
+def decorator_cd(f):
+    def wrapper(args):
+        with cd(CONF_DIR.as_posix()):
+            f(args)
+    return wrapper
+
+@decorator_cd
 def store(args):
-   args_files = [ Path(f).absolute().resolve().as_posix() for f in args.files ]
-   with cd(CONF_DIR.as_posix()):
-        for args_file in args_files:
-            file_path = Path(args_file).parent.as_posix()
-            file_name = Path(args_file).name
-            hash_file = md5(args_file.encode('utf-8')).hexdigest()
+   #we resolve the full path
+    args_files = [ Path(f).absolute().resolve().as_posix() for f in args.files ]
+    for args_file in args_files:
+        file_path = Path(args_file).parent.as_posix()
+        file_name = Path(args_file).name
+        hash_file = md5(args_file.encode('utf-8')).hexdigest()
 
-            #test if the password exists
-            passwd_file = Path.cwd().joinpath(PASSWORD_FILE)
-            if passwd_file.exists():
-                passwd=passwd_file.read_text()
-            #creation of passwd to encrypt
-            else:
-                pass
-            
-            #creation of OUTPUT_FILE
-            if not Path(OUTPUT_FILE).exists():
-                root = etree.Element('config')
-                with open(OUTPUT_FILE,'xb') as f:
-                    f.write(etree.tostring(root))
-            tree = etree.parse(OUTPUT_FILE)
-            root = tree.getroot()
+        #test if the password exists
+        passwd_file = Path.cwd().joinpath(PASSWORD_FILE)
+        if passwd_file.exists():
+            passwd=passwd_file.read_text()
+        #creation of passwd to encrypt
+        else:
+            pass
+        
+        tree = getTree(OUTPUT_FILE)
+        root = tree.getroot()
 
-            if alreadyExist(root,file_path,file_name):
-                if args.yes or input('The file exists already, do you want to update it? [y/n]: ') == 'y':
-                    with cd(DATA_DIR.as_posix()):
-                        call(['cp', args_file, hash_file])
-                        print('{} updated'.format(file_name))
-
-            else:
-                entryelem = etree.SubElement(root,'entry')
-                locationelem = etree.SubElement(entryelem,'location')
-                locationelem.text = file_path
-                nameelem = etree.SubElement(entryelem,'name')
-                nameelem.text = file_name
-                encrypelem = etree.SubElement(entryelem,'encrypted')
-                encrypelem.text = str(args.encrypt)
-                tree.write(OUTPUT_FILE)
+        if alreadyExist(root,file_path,file_name):
+            if args.yes or input('The file exists already, do you want to update it? [y/n]: ') == 'y':
                 with cd(DATA_DIR.as_posix()):
                     call(['cp', args_file, hash_file])
-                    print('{} stored'.format(file_name))
+                    print('{} updated'.format(file_name))
+
+        else:
+            entryelem = etree.SubElement(root,'entry')
+            locationelem = etree.SubElement(entryelem,'location')
+            locationelem.text = file_path
+            nameelem = etree.SubElement(entryelem,'name')
+            nameelem.text = file_name
+            encrypelem = etree.SubElement(entryelem,'encrypted')
+            encrypelem.text = str(args.encrypt)
+            tree.write(OUTPUT_FILE)
+            with cd(DATA_DIR.as_posix()):
+                call(['cp', args_file, hash_file])
+                print('{} stored'.format(file_name))
+
+@decorator_cd
 def deploy(args):
-    print("deploying")
+    tree = getTree(OUTPUT_FILE)
+    root = tree.getroot()
+    for elem in root.findall('entry'):
+        name = elem.find('name').text
+        location = elem.find('location').text
+        nameLocation = '/'.join([location,name])
+        hash_file = md5(nameLocation.encode('utf-8')).hexdigest()
+        try:
+            copy('/'.join([DATA_DIR.as_posix(),hash_file]),nameLocation)
+            print("copying to {}".format(nameLocation))
+        except FileNotFoundError:
+            #TODO: check in git history?
+            print("file '{}' doesn't exist".format(name,location))
+
+
 
 mainparser = ap.ArgumentParser(prog="configatelli", description="manage your config files")
 subparser = mainparser.add_subparsers(help="subcommand help")
@@ -97,5 +123,4 @@ deploy_parser.add_argument("-v", "--verbose", action="store_true")
 deploy_parser.set_defaults(func=deploy)
 
 args = mainparser.parse_args()
-#we resolve the full path
 args.func(args)
