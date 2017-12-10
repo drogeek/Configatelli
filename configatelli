@@ -26,23 +26,32 @@ def cd(path):
     finally:
         os.chdir(old)
 
+class InvalidKey(Exception):
+    def __init__(self,value):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
+
 alreadyExist = lambda root,location,name : root.find('.//entry/[name="{}"][location="{}"]'.format(name,location)) != None
 
 OUTPUT_FILE = 'locations.xml'
-PASSWORD_FILE = '.passwd.txt'
-## CHECK/CREATE CONFIG
+SALT_FILE = '.salt'
+TEST_PWD_FILE = '.test'
+TEST_PWD_TXT = 'anasteva@-a-ui%*/-"tennsavuve**"«ld-)(*-"@*-*@*"""""«('
+
+## CHECK/CREATE CONFIG FOLDER
 CONF_DIR = Path.home().joinpath('.config/configatelli')
 if not CONF_DIR.exists():
     os.mkdir(CONF_DIR.as_posix())
 
+## CHECK/CREATE CONFIG FILE
 if not CONF_DIR.joinpath(OUTPUT_FILE).exists():
     with cd(CONF_DIR.as_posix()):
         root = etree.Element('config')
         with open(OUTPUT_FILE,'xb') as f:
             f.write(etree.tostring(root))
 
-
-## CHECK/CREATE CONFIG
+## CHECK/CREATE DATA FOLDER
 DATA_DIR = Path.home().joinpath('.local/share/configatelli')
 if not DATA_DIR.exists():
     os.mkdir(DATA_DIR.as_posix())
@@ -74,13 +83,17 @@ def resolvePath(f):
         print("{} wasn't found".format(f))
 
 def encryptFile(path,name):
-    key=getKey()
-    with open(path,'rb') as fileToEncrypt:
-        cipher = AES.new(key, AES.MODE_CTR, counter=Counter.new(128))
-        encrypted = cipher.encrypt(fileToEncrypt.read())
-        with open(DATA_DIR.joinpath(name).as_posix(),'wb+') as encryptedFile:
-            encryptedFile.write(encrypted)
-            print('{} stored encrypted as {}'.format(path,name))
+    try:
+        key=getKey()
+        with open(path,'rb') as fileToEncrypt:
+            cipher = AES.new(key, AES.MODE_CTR, counter=Counter.new(128))
+            encrypted = cipher.encrypt(fileToEncrypt.read())
+            with open(DATA_DIR.joinpath(name).as_posix(),'wb+') as encryptedFile:
+                encryptedFile.write(encrypted)
+                print('{} stored encrypted as {}'.format(path,name))
+    except InvalidKey as ik:
+        print('{}'.format(ik.value))
+        encryptFile(path,name)
 
 def store(args):
     args_files = [ resolvePath(f) for f in args.files ]
@@ -130,9 +143,9 @@ def store(args):
                 with cd(DATA_DIR.as_posix()):
                     if not args.encrypt:
                         call(['cp', args_file, hash_file_name])
+                        print('{} stored as {}'.format(args_file,hash_file_name))
                     else:
                         encryptFile(args_file,hash_file_name)
-                    print('{} stored as {}'.format(args_file,hash_file_name))
 
 @decorator_cd
 def deploy(args):
@@ -140,9 +153,13 @@ def deploy(args):
     #then deploy the others
     tree = getTree(OUTPUT_FILE)
     root = tree.getroot()
-    if root.findall('.//entry/[encrypted="True"]') != None:
+    if root.findall('.//entry/[encrypted="True"]') != []:
         print('Encrypted files found')
-        key=getKey()
+        try:
+            key=getKey()
+        except InvalidKey as ik:
+            print('{}'.format(ik.value))
+            exit()
                
     for elem in root.findall('entry'):
         name = elem.find('name').text
@@ -175,7 +192,6 @@ def askCreationUserPassword():
     return pwd
 
 def askUserPassword():
-    #TODO: verify the password is correct
     return getpass('Enter your password: ')
 
 #returns a 256-bit key
@@ -186,21 +202,41 @@ def createKey(pwd,salt=os.urandom(8)):
 #get the key and create a random salt if it didn't exist already
 def getKey():
     #test if the password exists
-    #TODO: store it with the git repo
     with cd(DATA_DIR.as_posix()):
-        passwd_file = Path.cwd().joinpath(PASSWORD_FILE)
-        if passwd_file.exists():
-            with open(passwd_file.as_posix(),'rb') as pf:
+        salt_file = Path.cwd().joinpath(SALT_FILE)
+        if salt_file.exists():
+            with open(salt_file.as_posix(),'rb') as pf:
                 salt=pf.read()
                 pwd=askUserPassword()
                 _,key = createKey(pwd,salt)
+            if not verifyChallenge(key):
+                raise InvalidKey("The given key doesn't match the stored key")
         #creation of passwd to encrypt
         else:
             pwd=askCreationUserPassword()
             salt,key = createKey(pwd)
-            with open(passwd_file.as_posix(),'wb+') as pf:
+            with open(salt_file.as_posix(),'wb+') as pf:
                 pf.write(salt)
+            storeChallenge(key)
         return key
+
+def storeChallenge(key):
+    #store a challenge to test the validity of the key
+    cipher = AES.new(key, AES.MODE_CTR, counter=Counter.new(128))
+    encrypted = cipher.encrypt(TEST_PWD_TXT)
+    with cd(CONF_DIR.as_posix()):
+        with open(TEST_PWD_FILE,'wb+') as tpf:
+            tpf.write(encrypted)
+    
+def verifyChallenge(key):
+    with cd(CONF_DIR.as_posix()):
+        cipher = AES.new(key, AES.MODE_CTR, counter=Counter.new(128))
+        with open(TEST_PWD_FILE,'rb+') as tpf:
+            try:
+                decrypted = cipher.decrypt(tpf.read()).decode('utf-8')
+            except UnicodeDecodeError:
+                return False
+        return decrypted == TEST_PWD_TXT
 
 mainparser = ap.ArgumentParser(prog="configatelli", description="manage your config files")
 subparser = mainparser.add_subparsers(help="subcommand help")
