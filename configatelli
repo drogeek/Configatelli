@@ -14,6 +14,7 @@ from Crypto.Cipher import AES
 from Crypto.Util import Counter
 import os
 
+#TODO: generic for path ($HOME) and store hash of the abstraction, not the real one (otherwise it's going to change from one user name to another)
 @contextmanager
 def cd(path):
     try:
@@ -33,6 +34,8 @@ PASSWORD_FILE = '.passwd.txt'
 CONF_DIR = Path.home().joinpath('.config/configatelli')
 if not CONF_DIR.exists():
     os.mkdir(CONF_DIR.as_posix())
+
+if not CONF_DIR.joinpath(OUTPUT_FILE).exists():
     with cd(CONF_DIR.as_posix()):
         root = etree.Element('config')
         with open(OUTPUT_FILE,'xb') as f:
@@ -70,6 +73,15 @@ def resolvePath(f):
     except FileNotFoundError:
         print("{} wasn't found".format(f))
 
+def encryptFile(path,name):
+    key=getKey()
+    with open(path,'rb') as fileToEncrypt:
+        cipher = AES.new(key, AES.MODE_CTR, counter=Counter.new(128))
+        encrypted = cipher.encrypt(fileToEncrypt.read())
+        with open(DATA_DIR.joinpath(name).as_posix(),'wb+') as encryptedFile:
+            encryptedFile.write(encrypted)
+            print('{} stored encrypted as {}'.format(path,name))
+
 def store(args):
     args_files = [ resolvePath(f) for f in args.files ]
     with cd(CONF_DIR.as_posix()):
@@ -88,22 +100,15 @@ def store(args):
                 stored_elem=root.find('.//entry/[name="{}"][location="{}"]'.format(file_name,file_path))
                 stored_encryption_status=stored_elem.find('encrypted')
                 stored_hash_data=stored_elem.find('hdata')
-                if hash_data != stored_hash_data.text:
+                if stored_encryption_status.text != str(args.encrypt) or hash_data != stored_hash_data.text:
                     #TODO: commit changes
                     if not args.encrypt:
                         with cd(DATA_DIR.as_posix()):
                             call(['cp', args_file, hash_file_name])
-                            print('{} updated'.format(file_name))
+                            print('{} stored as {}'.format(args_file,hash_file_name))
                     else:
                     #TODO: remove previously non encrypted file from git history?
-                        key=getKey()
-                        with open(args_file,'rb') as fileToEncrypt:
-                            cipher = AES.new(key, AES.MODE_CTR, counter=Counter.new(128))
-                            encrypted = cipher.encrypt(fileToEncrypt.read())
-                            print(DATA_DIR.joinpath(hash_file_name).as_posix())
-                            with open(DATA_DIR.joinpath(hash_file_name).as_posix(),'wb+') as encryptedFile:
-                                encryptedFile.write(encrypted)
-                                print("file {} successfully encrypted and stored".format(args_file))
+                        encryptFile(args_file,hash_file_name)
                     stored_hash_data.text=hash_data
                     stored_encryption_status.text=str(args.encrypt)
                     tree.write(OUTPUT_FILE)
@@ -123,8 +128,11 @@ def store(args):
                 encrypelem.text = str(args.encrypt)
                 tree.write(OUTPUT_FILE)
                 with cd(DATA_DIR.as_posix()):
-                    call(['cp', args_file, hash_file_name])
-                    print('{} stored'.format(file_name))
+                    if not args.encrypt:
+                        call(['cp', args_file, hash_file_name])
+                    else:
+                        encryptFile(args_file,hash_file_name)
+                    print('{} stored as {}'.format(args_file,hash_file_name))
 
 @decorator_cd
 def deploy(args):
@@ -167,7 +175,7 @@ def askCreationUserPassword():
     return pwd
 
 def askUserPassword():
-    #TODO: verify the password is good
+    #TODO: verify the password is correct
     return getpass('Enter your password: ')
 
 #returns a 256-bit key
@@ -175,23 +183,24 @@ def createKey(pwd,salt=os.urandom(8)):
     key = PBKDF2(pwd, salt,iterations=10000).read(32)
     return (salt,key)
 
-#get the salt, and create the key along with it if it didn't exist already
+#get the key and create a random salt if it didn't exist already
 def getKey():
     #test if the password exists
     #TODO: store it with the git repo
-    passwd_file = Path.cwd().joinpath(PASSWORD_FILE)
-    if passwd_file.exists():
-        with open(passwd_file.as_posix(),'rb') as pf:
-            salt=pf.read()
-            pwd=askUserPassword()
-            _,key = createKey(pwd,salt)
-    #creation of passwd to encrypt
-    else:
-        pwd=askCreationUserPassword()
-        salt,key = createKey(pwd)
-        with open(passwd_file.as_posix(),'wb+') as pf:
-            pf.write(salt)
-    return key
+    with cd(DATA_DIR.as_posix()):
+        passwd_file = Path.cwd().joinpath(PASSWORD_FILE)
+        if passwd_file.exists():
+            with open(passwd_file.as_posix(),'rb') as pf:
+                salt=pf.read()
+                pwd=askUserPassword()
+                _,key = createKey(pwd,salt)
+        #creation of passwd to encrypt
+        else:
+            pwd=askCreationUserPassword()
+            salt,key = createKey(pwd)
+            with open(passwd_file.as_posix(),'wb+') as pf:
+                pf.write(salt)
+        return key
 
 mainparser = ap.ArgumentParser(prog="configatelli", description="manage your config files")
 subparser = mainparser.add_subparsers(help="subcommand help")
