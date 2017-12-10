@@ -85,11 +85,11 @@ def store(args):
             root = tree.getroot()
 
             if alreadyExist(root,file_path,file_name):
-                stored_hash_data=root.find('.//entry/[name="{}"][location="{}"]/hdata'.format(file_name,file_path))
+                stored_elem=root.find('.//entry/[name="{}"][location="{}"]'.format(file_name,file_path))
+                stored_encryption_status=stored_elem.find('encrypted')
+                stored_hash_data=stored_elem.find('hdata')
                 if hash_data != stored_hash_data.text:
                     #TODO: commit changes
-                    stored_hash_data.text=hash_data
-                    tree.write(OUTPUT_FILE)
                     if not args.encrypt:
                         with cd(DATA_DIR.as_posix()):
                             call(['cp', args_file, hash_file_name])
@@ -100,10 +100,14 @@ def store(args):
                         with open(args_file,'rb') as fileToEncrypt:
                             cipher = AES.new(key, AES.MODE_CTR, counter=Counter.new(128))
                             encrypted = cipher.encrypt(fileToEncrypt.read())
+                            print(DATA_DIR.joinpath(hash_file_name).as_posix())
                             with open(DATA_DIR.joinpath(hash_file_name).as_posix(),'wb+') as encryptedFile:
                                 encryptedFile.write(encrypted)
                                 print("file {} successfully encrypted and stored".format(args_file))
-                                
+                    stored_hash_data.text=hash_data
+                    stored_encryption_status.text=str(args.encrypt)
+                    tree.write(OUTPUT_FILE)
+           
                 else:
                     print("{} hasn't changed".format(file_name))
 
@@ -128,17 +132,32 @@ def deploy(args):
     #then deploy the others
     tree = getTree(OUTPUT_FILE)
     root = tree.getroot()
+    if root.findall('.//entry/[encrypted="True"]') != None:
+        print('Encrypted files found')
+        key=getKey()
+               
     for elem in root.findall('entry'):
         name = elem.find('name').text
         location = elem.find('location').text
+        encrypted = elem.find('encrypted').text
         nameLocation = '/'.join([location,name])
         hash_file_name = sha1(nameLocation.encode('utf-8')).hexdigest()
-        try:
-            copy('/'.join([DATA_DIR.as_posix(),hash_file_name]),nameLocation)
-            print("copying to {}".format(nameLocation))
-        except FileNotFoundError:
-            #TODO: check in git history?
-            print("file '{}' doesn't exist".format(name))
+        if encrypted == 'True':
+             with open('/'.join([DATA_DIR.as_posix(),hash_file_name]),'rb') as fileToDecrypt:
+                cipher = AES.new(key, AES.MODE_CTR, counter=Counter.new(128))
+                decrypted = cipher.decrypt(fileToDecrypt.read())
+                with open(nameLocation,'wb+') as decryptedFile:
+                    decryptedFile.write(decrypted)
+                    print("file {} successfully decrypted".format(name))
+                    print("copying to {}".format(nameLocation))
+                            
+        else:
+            try:
+                copy('/'.join([DATA_DIR.as_posix(),hash_file_name]),nameLocation)
+                print("copying to {}".format(nameLocation))
+            except FileNotFoundError:
+                #TODO: check in git history?
+                print("file '{}' doesn't exist".format(name))
 
 def askCreationUserPassword():
     pwd=''
@@ -148,6 +167,7 @@ def askCreationUserPassword():
     return pwd
 
 def askUserPassword():
+    #TODO: verify the password is good
     return getpass('Enter your password: ')
 
 #returns a 256-bit key
