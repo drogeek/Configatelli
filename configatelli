@@ -100,7 +100,7 @@ def store(args):
     with cd(CONF_DIR.as_posix()):
        #we resolve the full path
         for args_file in filter(lambda x: x != None, args_files):
-            file_path = Path(args_file).parent.as_posix()
+            file_path = unexpanduser(Path(args_file).parent)
             file_name = Path(args_file).name
             hash_file_name = sha1(args_file.encode('utf-8')).hexdigest()
             hash_data = hashData(args_file).hexdigest()
@@ -147,6 +147,7 @@ def store(args):
                     else:
                         encryptFile(args_file,hash_file_name)
 
+unexpanduser = lambda x : str(x).replace(os.getenv('HOME'),'~')
 @decorator_cd
 def deploy(args):
     #get encrypted ones, decrypt them and deploy them
@@ -163,7 +164,7 @@ def deploy(args):
                
     for elem in root.findall('entry'):
         name = elem.find('name').text
-        location = elem.find('location').text
+        location = Path(elem.find('location').text).expanduser().as_posix()
         encrypted = elem.find('encrypted').text
         nameLocation = '/'.join([location,name])
         hash_file_name = sha1(nameLocation.encode('utf-8')).hexdigest()
@@ -210,7 +211,7 @@ def getKey():
                 pwd=askUserPassword()
                 _,key = createKey(pwd,salt)
             if not verifyChallenge(key):
-                raise InvalidKey("The given key doesn't match the stored key")
+                raise InvalidKey("The given key doesn't match the cipher")
         #creation of passwd to encrypt
         else:
             pwd=askCreationUserPassword()
