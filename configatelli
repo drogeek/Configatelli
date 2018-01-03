@@ -44,18 +44,19 @@ CONF_DIR = Path.home().joinpath('.config/configatelli')
 if not CONF_DIR.exists():
     os.mkdir(CONF_DIR.as_posix())
 
-## CHECK/CREATE CONFIG FILE
-if not CONF_DIR.joinpath(OUTPUT_FILE).exists():
-    with cd(CONF_DIR.as_posix()):
-        root = etree.Element('config')
-        with open(OUTPUT_FILE,'xb') as f:
-            f.write(etree.tostring(root))
-
 ## CHECK/CREATE DATA FOLDER
 DATA_DIR = Path.home().joinpath('.local/share/configatelli')
 if not DATA_DIR.exists():
     os.mkdir(DATA_DIR.as_posix())
-        
+
+## CHECK/CREATE CONFIG FILE
+if not DATA_DIR.joinpath(OUTPUT_FILE).exists():
+    with cd(DATA_DIR.as_posix()):
+        root = etree.Element('config')
+        with open(OUTPUT_FILE,'xb') as f:
+            f.write(etree.tostring(root))
+
+       
 def getTree(f):
     if not Path(f).exists():
         root = etree.Element('config')
