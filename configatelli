@@ -66,7 +66,7 @@ def getTree(f):
 
 def decorator_cd(f):
     def wrapper(args):
-        with cd(CONF_DIR.as_posix()):
+        with cd(DATA_DIR.as_posix()):
             f(args)
     return wrapper
 
@@ -98,7 +98,7 @@ def encryptFile(path,name):
 
 def store(args):
     args_files = [ resolvePath(f) for f in args.files ]
-    with cd(CONF_DIR.as_posix()):
+    with cd(DATA_DIR.as_posix()):
        #we resolve the full path
         for args_file in filter(lambda x: x != None, args_files):
             file_path = unexpanduser(Path(args_file).parent)
