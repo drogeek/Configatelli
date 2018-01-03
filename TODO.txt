@@ -4,3 +4,5 @@ automatically commit (or push?)
 bfg to destroy history
 ##
 allow ability to remove
+##
+add profiles, to deploy only certain files?
