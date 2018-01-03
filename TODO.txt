@@ -1,0 +1,6 @@
+##
+automatically commit (or push?)
+##
+bfg to destroy history
+##
+allow directories to be stored
