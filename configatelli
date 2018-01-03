@@ -3,7 +3,6 @@
 from pathlib import Path
 from contextlib import contextmanager
 import xml.etree.ElementTree as etree
-import os
 from subprocess import call
 import argparse as ap
 from hashlib import sha1
@@ -96,57 +95,66 @@ def encryptFile(path,name):
         print('{}'.format(ik.value))
         encryptFile(path,name)
 
+def store_file(args_file):
+    file_path = unexpanduser(Path(args_file).parent)
+    file_name = Path(args_file).name
+    hash_file_name = sha1(args_file.encode('utf-8')).hexdigest()
+    hash_data = hashData(args_file).hexdigest()
+
+		
+    tree = getTree(OUTPUT_FILE)
+    root = tree.getroot()
+
+    if alreadyExist(root,file_path,file_name):
+        stored_elem=root.find('.//entry/[name="{}"][location="{}"]'.format(file_name,file_path))
+        stored_encryption_status=stored_elem.find('encrypted')
+        stored_hash_data=stored_elem.find('hdata')
+        if stored_encryption_status.text != str(args.encrypt) or hash_data != stored_hash_data.text:
+            #TODO: commit changes
+            if not args.encrypt:
+                with cd(DATA_DIR.as_posix()):
+                    call(['cp', args_file, hash_file_name])
+                    print('{} stored as {}'.format(args_file,hash_file_name))
+            else:
+            #TODO: remove previously non encrypted file from git history?
+                encryptFile(args_file,hash_file_name)
+            stored_hash_data.text=hash_data
+            stored_encryption_status.text=str(args.encrypt)
+            tree.write(OUTPUT_FILE)
+
+        else:
+            print("{} hasn't changed".format(file_name))
+
+    else:
+        entryelem = etree.SubElement(root,'entry')
+        locationelem = etree.SubElement(entryelem,'location')
+        locationelem.text = file_path
+        nameelem = etree.SubElement(entryelem,'name')
+        nameelem.text = file_name
+        hashDataelem = etree.SubElement(entryelem,'hdata')
+        hashDataelem.text=hash_data
+        encrypelem = etree.SubElement(entryelem,'encrypted')
+        encrypelem.text = str(args.encrypt)
+        tree.write(OUTPUT_FILE)
+        with cd(DATA_DIR.as_posix()):
+            if not args.encrypt:
+                call(['cp', args_file, hash_file_name])
+                print('{} stored as {}'.format(args_file,hash_file_name))
+            else:
+                encryptFile(args_file,hash_file_name)
+
+
 def store(args):
-    args_files = [ resolvePath(f) for f in args.files ]
+    args_files = [ resolvePath(f) for f in args.files if os.path.isfile(f) ]
+    args_directories = [ resolvePath(d) for d in args.files if os.path.isdir(d) ]
+    for directory in args_directories:
+        for path,_,files in os.walk(directory):
+            for f in files:
+                args_files.append('/'.join(path,f))
     with cd(DATA_DIR.as_posix()):
        #we resolve the full path
         for args_file in filter(lambda x: x != None, args_files):
-            file_path = unexpanduser(Path(args_file).parent)
-            file_name = Path(args_file).name
-            hash_file_name = sha1(args_file.encode('utf-8')).hexdigest()
-            hash_data = hashData(args_file).hexdigest()
-
-                        
-            tree = getTree(OUTPUT_FILE)
-            root = tree.getroot()
-
-            if alreadyExist(root,file_path,file_name):
-                stored_elem=root.find('.//entry/[name="{}"][location="{}"]'.format(file_name,file_path))
-                stored_encryption_status=stored_elem.find('encrypted')
-                stored_hash_data=stored_elem.find('hdata')
-                if stored_encryption_status.text != str(args.encrypt) or hash_data != stored_hash_data.text:
-                    #TODO: commit changes
-                    if not args.encrypt:
-                        with cd(DATA_DIR.as_posix()):
-                            call(['cp', args_file, hash_file_name])
-                            print('{} stored as {}'.format(args_file,hash_file_name))
-                    else:
-                    #TODO: remove previously non encrypted file from git history?
-                        encryptFile(args_file,hash_file_name)
-                    stored_hash_data.text=hash_data
-                    stored_encryption_status.text=str(args.encrypt)
-                    tree.write(OUTPUT_FILE)
-           
-                else:
-                    print("{} hasn't changed".format(file_name))
-
-            else:
-                entryelem = etree.SubElement(root,'entry')
-                locationelem = etree.SubElement(entryelem,'location')
-                locationelem.text = file_path
-                nameelem = etree.SubElement(entryelem,'name')
-                nameelem.text = file_name
-                hashDataelem = etree.SubElement(entryelem,'hdata')
-                hashDataelem.text=hash_data
-                encrypelem = etree.SubElement(entryelem,'encrypted')
-                encrypelem.text = str(args.encrypt)
-                tree.write(OUTPUT_FILE)
-                with cd(DATA_DIR.as_posix()):
-                    if not args.encrypt:
-                        call(['cp', args_file, hash_file_name])
-                        print('{} stored as {}'.format(args_file,hash_file_name))
-                    else:
-                        encryptFile(args_file,hash_file_name)
+             store_file(args_file)
 
 unexpanduser = lambda x : str(x).replace(os.getenv('HOME'),'~')
 @decorator_cd
@@ -173,6 +181,7 @@ def deploy(args):
              with open('/'.join([DATA_DIR.as_posix(),hash_file_name]),'rb') as fileToDecrypt:
                 cipher = AES.new(key, AES.MODE_CTR, counter=Counter.new(128))
                 decrypted = cipher.decrypt(fileToDecrypt.read())
+                os.makedirs(location,exist_ok=True)
                 with open(nameLocation,'wb+') as decryptedFile:
                     decryptedFile.write(decrypted)
                     print("file {} successfully decrypted".format(name))
@@ -180,6 +189,7 @@ def deploy(args):
                             
         else:
             try:
+                os.makedirs(location,exist_ok=True)
                 copy('/'.join([DATA_DIR.as_posix(),hash_file_name]),nameLocation)
                 print("copying to {}".format(nameLocation))
             except FileNotFoundError:
