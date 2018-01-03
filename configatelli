@@ -144,7 +144,7 @@ def store_file(args_file):
                 encryptFile(args_file,hash_file_name)
 
 
-def store(args):
+def store():
     args_files = [ resolvePath(f) for f in args.files if os.path.isfile(f) ]
     args_directories = [ resolvePath(d) for d in args.files if os.path.isdir(d) ]
     for directory in args_directories:
