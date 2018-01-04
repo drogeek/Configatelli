@@ -221,8 +221,14 @@ def getKey():
                 salt=pf.read()
                 pwd=askUserPassword()
                 _,key = createKey(pwd,salt)
-            if not verifyChallenge(key):
-                raise InvalidKey("The given key doesn't match the cipher")
+            if not os.path.exists(TEST_PWD_FILE):
+                storeChallenge(key)
+                if not verifyChallenge(key):
+                    os.remove(TEST_PWD_FILE)
+                    raise InvalidKey("The given key doesn't match the cipher")
+            else:
+                if not verifyChallenge(key):
+                    raise InvalidKey("The given key doesn't match the cipher")
         #creation of passwd to encrypt
         else:
             pwd=askCreationUserPassword()
@@ -236,12 +242,12 @@ def storeChallenge(key):
     #store a challenge to test the validity of the key
     cipher = AES.new(key, AES.MODE_CTR, counter=Counter.new(128))
     encrypted = cipher.encrypt(TEST_PWD_TXT)
-    with cd(CONF_DIR.as_posix()):
+    with cd(DATA_DIR.as_posix()):
         with open(TEST_PWD_FILE,'wb+') as tpf:
             tpf.write(encrypted)
     
 def verifyChallenge(key):
-    with cd(CONF_DIR.as_posix()):
+    with cd(DATA_DIR.as_posix()):
         cipher = AES.new(key, AES.MODE_CTR, counter=Counter.new(128))
         with open(TEST_PWD_FILE,'rb+') as tpf:
             try:
