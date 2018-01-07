@@ -1,9 +1,9 @@
 # configatelli
 ## how to use
 ### store command
-store the location and name of config_files
+store the files, encrypted if -e specified
 ```
-configatelli store [config_files]
+configatelli store [-e] config_files|folders ... 
 ```
 ### deploy command
 copy config files to their appropriate locations

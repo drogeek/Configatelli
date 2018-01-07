@@ -5,7 +5,7 @@ from contextlib import contextmanager
 import xml.etree.ElementTree as etree
 from subprocess import call
 import argparse as ap
-from hashlib import sha1
+from hashlib import sha256
 from shutil import copy,Error
 from getpass import getpass
 from pbkdf2 import PBKDF2
@@ -70,7 +70,7 @@ def decorator_cd(f):
     return wrapper
 
 def hashData(path):
-    result = sha1()
+    result = sha256()
     with open(path,'rb') as f:
         for chunk in iter(lambda: f.read(4096), b''):
             result.update(chunk)
@@ -98,7 +98,7 @@ def encryptFile(path,name):
 def store_file(args_file):
     file_path = unexpanduser(Path(args_file).parent)
     file_name = Path(args_file).name
-    hash_file_name = sha1(args_file.encode('utf-8')).hexdigest()
+    hash_file_name = sha256(args_file.encode('utf-8')).hexdigest()
     hash_data = hashData(args_file).hexdigest()
 
 		
@@ -176,7 +176,7 @@ def deploy(args):
         location = Path(elem.find('location').text).expanduser().as_posix()
         encrypted = elem.find('encrypted').text
         nameLocation = '/'.join([location,name])
-        hash_file_name = sha1(nameLocation.encode('utf-8')).hexdigest()
+        hash_file_name = sha256(nameLocation.encode('utf-8')).hexdigest()
         if encrypted == 'True':
              with open('/'.join([DATA_DIR.as_posix(),hash_file_name]),'rb') as fileToDecrypt:
                 cipher = AES.new(key, AES.MODE_CTR, counter=Counter.new(128))
